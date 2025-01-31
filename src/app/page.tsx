@@ -209,7 +209,8 @@ export default function ImageProcessor() {
               className="h-4 w-4"
             />
             <label htmlFor="subfolder-toggle" className="text-sm text-gray-600">
-              Preserve subfolder structure (upload folder)
+              Aktifkan mode convert dengan tetap mengikuti struktur direktori
+              folder/subfolder yang sama
             </label>
           </div>
 
