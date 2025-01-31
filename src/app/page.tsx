@@ -6,6 +6,9 @@ import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
+type FileWithRelativePath = File & {
+  readonly path: string;
+};
 
 export default function ImageProcessor() {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -13,6 +16,7 @@ export default function ImageProcessor() {
   const [isDone, setIsDone] = useState(false);
   const [lengthFile, setLengthFile] = useState(0);
   const [compressFolder, setCompressFolder] = useState<JSZip>();
+  const [useSubfolders, setUseSubfolders] = useState(false);
 
   const processImage = async (
     file: File,
@@ -55,54 +59,69 @@ export default function ImageProcessor() {
     });
   };
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    if (!acceptedFiles.length) return;
-    setIsDone(false);
-    setLengthFile(acceptedFiles.length);
-    setIsProcessing(true);
-    const zip = new JSZip();
-    const totalFiles = acceptedFiles.length;
-    let processed = 0;
-    const folderFoto = zip.folder("foto_meter");
-    const folderThumbnail = zip.folder("fotometer_thumnail");
+  const onDrop = useCallback(
+    async (acceptedFiles: File[]) => {
+      if (!acceptedFiles.length) return;
+      setIsDone(false);
+      setLengthFile(acceptedFiles.length);
+      setIsProcessing(true);
+      const zip = new JSZip();
+      const totalFiles = acceptedFiles.length;
+      let processed = 0;
 
-    try {
-      for (const file of acceptedFiles) {
-        const baseName = file.name.replace(/\.[^/.]+$/, "");
-        console.log(baseName);
-        let fileName;
-        const standardName = baseName.split("_")[0];
-        if (standardName) {
-          fileName = standardName;
-        } else {
-          fileName = baseName;
+      try {
+        for (const file of acceptedFiles) {
+          const originalFile = file as FileWithRelativePath;
+          const originalName = originalFile.name;
+          const baseName = originalName.replace(/\.[^/.]+$/, "");
+          const standardName = baseName.split("_")[0];
+          const processedBaseName = standardName || baseName;
+
+          let folderPath = "";
+          if (useSubfolders) {
+            console.log(originalFile);
+            const relativePath = useSubfolders
+              ? originalFile.path.split("/").slice(0, -1).join("/")
+              : "";
+            folderPath = relativePath.split("/").slice(1).join("/");
+          }
+          console.log(folderPath);
+          const folderFoto = zip.folder(
+            useSubfolders ? `${folderPath}/foto_meter` : "foto_meter"
+          );
+          const folderThumbnail = zip.folder(
+            useSubfolders
+              ? `${folderPath}/fotometer_thumnail`
+              : "fotometer_thumnail"
+          );
+
+          try {
+            const [thumbnail, medium] = await Promise.all([
+              processImage(file, 480, 320),
+              processImage(file, 640, 480),
+            ]);
+
+            folderFoto!.file(`${processedBaseName}.jpg`, medium);
+            folderThumbnail!.file(`${processedBaseName}.jpg`, thumbnail);
+
+            processed++;
+            setProgress(Math.round((processed / totalFiles) * 100));
+          } catch (error) {
+            console.error(`Error processing ${file.name}:`, error);
+          }
         }
 
-        try {
-          const [thumbnail, medium] = await Promise.all([
-            processImage(file, 480, 320),
-            processImage(file, 640, 480),
-          ]);
-
-          folderThumbnail!.file(`${fileName}.jpg`, thumbnail);
-          folderFoto!.file(`${fileName}.jpg`, medium);
-
-          processed++;
-          setProgress(Math.round((processed / totalFiles) * 100));
-        } catch (error) {
-          console.error(`Error processing ${file.name}:`, error);
-        }
+        setIsDone(true);
+        setCompressFolder(zip);
+      } catch (error) {
+        console.error("Gagal membuat zip:", error);
+      } finally {
+        setIsProcessing(false);
+        setProgress(0);
       }
-
-      setIsDone(true);
-      setCompressFolder(zip);
-    } catch (error) {
-      console.error("Gagal membuat zip:", error);
-    } finally {
-      setIsProcessing(false);
-      setProgress(0);
-    }
-  }, []);
+    },
+    [useSubfolders]
+  );
 
   const downloadHandler = async () => {
     const now = new Date();
@@ -110,6 +129,7 @@ export default function ImageProcessor() {
     const content = await compressFolder!.generateAsync({ type: "blob" });
     saveAs(content, `compress_${formattedDate}.zip`);
   };
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
@@ -137,7 +157,12 @@ export default function ImageProcessor() {
               }
               ${isProcessing ? "opacity-50 cursor-not-allowed" : ""}`}
           >
-            <input {...getInputProps()} />
+            <input
+              {...getInputProps({
+                // @ts-expect-error idk
+                webkitdirectory: useSubfolders ? "true" : undefined,
+              })}
+            />
             <div className="text-center">
               <svg
                 className={`mx-auto h-12 w-12 mb-4 ${
@@ -173,6 +198,19 @@ export default function ImageProcessor() {
                 </p>
               </div>
             </div>
+          </div>
+
+          <div className="mt-4 flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={useSubfolders}
+              onChange={(e) => setUseSubfolders(e.target.checked)}
+              id="subfolder-toggle"
+              className="h-4 w-4"
+            />
+            <label htmlFor="subfolder-toggle" className="text-sm text-gray-600">
+              Preserve subfolder structure (upload folder)
+            </label>
           </div>
 
           {isProcessing && (
