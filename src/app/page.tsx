@@ -63,6 +63,8 @@ export default function ImageProcessor() {
     const zip = new JSZip();
     const totalFiles = acceptedFiles.length;
     let processed = 0;
+    const folderFoto = zip.folder("foto_meter");
+    const folderThumbnail = zip.folder("fotometer_thumnail");
 
     try {
       for (const file of acceptedFiles) {
@@ -75,9 +77,6 @@ export default function ImageProcessor() {
         } else {
           fileName = baseName;
         }
-        const folder = zip.folder(fileName);
-        console.log(folder);
-        if (!folder) continue;
 
         try {
           const [thumbnail, medium] = await Promise.all([
@@ -85,8 +84,8 @@ export default function ImageProcessor() {
             processImage(file, 640, 480),
           ]);
 
-          folder.file(`${fileName}_thumbnail.jpg`, thumbnail);
-          folder.file(`${fileName}.jpg`, medium);
+          folderThumbnail!.file(`${fileName}.jpg`, thumbnail);
+          folderFoto!.file(`${fileName}.jpg`, medium);
 
           processed++;
           setProgress(Math.round((processed / totalFiles) * 100));
